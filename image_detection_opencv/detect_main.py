@@ -5,30 +5,45 @@ import imutils
 import time
 import cv2
 
-def detect_face(frame, original_frame):
-    face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-    eye_cascade = cv2.CascadeClassifier('haarcascade_eye.xml')
+haarcascade_path = '/usr/share/opencv/haarcascades/'
 
-    faces = face_cascade.detectMultiScale(frame, 1.3, 5)
+def detect_face(frame, gray):
+
+    face_cascade_path = haarcascade_path + 'haarcascade_frontalface_default.xml'
+    eye_cascade_path = haarcascade_path + 'haarcascade_eye.xml'
+
+    face_cascade = cv2.CascadeClassifier(face_cascade_path)
+    eye_cascade = cv2.CascadeClassifier(eye_cascade_path)
+
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+    face_count = 0
+    eyes_count = 0
+
     for (x,y,w,h) in faces:
-        cv2.rectangle(original_frame,(x,y),(x+w,y+h),(255,0,0),2)
-        roi_gray = frame[y:y+h, x:x+w]
-        roi_color = original_frame[y:y+h, x:x+w]
+        cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
+        roi_gray = gray[y:y+h, x:x+w]
+        roi_color = frame[y:y+h, x:x+w]
+        face_count += 1
         eyes = eye_cascade.detectMultiScale(roi_gray)
         for (ex,ey,ew,eh) in eyes:
             cv2.rectangle(roi_color,(ex,ey),(ex+ew,ey+eh),(0,255,0),2)
+            eyes_count += 1
 
-    return original_frame
+    return face_count, eyes_count, frame
 
 
 # detect the upper body in a frame.
-#    "image" should be the  grayscaled original frame
 #    "frame" should be the original frame
+#    "gray" should be the  grayscaled original frame
 #    return object is the frame with upper body marked
-def detect_upper_body(frame, image):
+def detect_upper_body(frame, gray):
     # find upper body in the video frame
-    upper_body_cascade = cv2.CascadeClassifier('haarcascade_upperbody.xml')
-    upper_body = upper_body_cascade.detectMultiScale(image, 1.3, 5)
+    #upperbody_cascade_path = haarcascade_path + 'haarcascade_upperbody.xml'
+    upperbody_cascade_path = '/usr/share/opencv/haarcascades/haarcascade_upperbody.xml'
+
+    upper_body_cascade = cv2.CascadeClassifier(upperbody_cascade_path)
+    upper_body = upper_body_cascade.detectMultiScale(gray, 1.3, 5)
 
     body_cnt = 0
     for body in upper_body:
@@ -38,7 +53,7 @@ def detect_upper_body(frame, image):
         (x, y, w, h) = cv2.boundingRect(upper_body)
         cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
 
-    return frame
+    return body_cnt, frame
 
 def detect_motion(background, frame, original_frame, min_area):
 
@@ -50,8 +65,12 @@ def detect_motion(background, frame, original_frame, min_area):
     # dilate the thresholded image to fill in holes, then find contours
     # on thresholded image
     thresh = cv2.dilate(thresh, None, iterations=2)
+
     (cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
     cv2.CHAIN_APPROX_SIMPLE)
+
+
+    find_motion = 0
 
     # loop over the contours
     for c in cnts:
@@ -59,18 +78,16 @@ def detect_motion(background, frame, original_frame, min_area):
         if cv2.contourArea(c) < min_area:
             continue
 
+        find_motion += 1
         # compute the bounding box for the contour, draw it on the frame,
         # and update the text
         (x, y, w, h) = cv2.boundingRect(c)
         cv2.rectangle(original_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        text = "Occupied"
 
-    return original_frame
-
+    return find_motion, original_frame, frameDelta
 
 
-def count_person():
-    pass
+
 
  
 def loop_frames(camera, min_area):
@@ -83,7 +100,7 @@ def loop_frames(camera, min_area):
         # grab the current frame and initialize the occupied/unoccupied
         # text
         (grabbed, frame) = camera.read()
-        text = "Unoccupied"
+        #text = "Unoccupied"
  
         # if the frame could not be grabbed, then we have reached the end
         # of the video
@@ -93,20 +110,33 @@ def loop_frames(camera, min_area):
         # resize the frame, convert it to grayscale, and blur it
         frame = imutils.resize(frame, width=500)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        gray_gauss = cv2.GaussianBlur(gray, (21, 21), 0)
  
         # if the first frame is None, initialize it
         if firstFrame is None:
-            firstFrame = gray
+            firstFrame = gray_gauss
             continue
 
-        #frame = detect_motion(firstFrame, gray, frame, min_area)
-        #frame = detect_face(gray, frame)
-        frame = detect_upper_body(frame, gray)
+        # detect if there's any motion in the video, comparing with first frame
+        motion_detected = False
+
+        (motion_detected, frame, delta_frame) = detect_motion(firstFrame, gray_gauss, frame, min_area)
+        
+        if motion_detected > 0:
+            print "{} object or person moving in video!!!".format(motion_detected)
+
+            # detect faces
+            (face_count, eyes_count, frame) = detect_face(frame, gray)
+            #(face_count, eyes_count, frame) = detect_face(frame, delta_frame)
+            print'{} faces and {} eyes detected'.format(face_count,eyes_count)
+           
+           
+
+        #frame = detect_upper_body(frame, gray)
 
         # draw the text and timestamp on the frame
-        cv2.putText(frame, "Room Status: {}".format(text), (10, 20),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        #cv2.putText(frame, "Room Status: {}".format(text), (10, 20),
+        #    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         cv2.putText(frame, datetime.datetime.now().strftime("%A %d %B %Y %I:%M:%S%p"),
             (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 255), 1)
  
