@@ -1,1 +1,1 @@
-export GOOGLE_APPLICATION_CREDENTIALS=/home/bigben/image_detection/key.json
+export GOOGLE_APPLICATION_CREDENTIALS=/home/pi/test/image_detection/key.json

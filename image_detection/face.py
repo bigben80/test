@@ -13,6 +13,11 @@ from PIL import ImageDraw
 
 import pprint
 
+import io
+import time
+import picamera
+
+
 DISCOVERY_URL='https://{api}.googleapis.com/$discovery/rest?version={apiVersion}'
 
 
@@ -61,7 +66,7 @@ def detect_face(face_file, max_results=4):
         print "Unexpected error when trying to send image to service!", sys.exc_info()[0]
 
     response = request.execute()
-    pprint(response)
+    #pprint(response)
     return response['responses'][0]['faceAnnotations']
 
 
@@ -85,6 +90,48 @@ def highlight_faces(image, faces, output_filename):
     del draw
     im.save(output_filename)
 
+def loop_frames():
+
+    try:
+        service = get_vision_service()
+    except:
+        print "Unexpected error when trying to get vision service!", sys.exc_info()[0]
+
+    camera = picamera.PiCamera()
+    camera.rotation = 180
+    camera.resolution = [640, 480]
+    stream = io.BytesIO()
+
+    for foo in camera.capture_continuous('image{counter:02d}.jpg', format='jpeg'): 
+   
+        batch_request = [{
+            'image': {
+                'content': base64.b64encode(foo).decode('UTF-8')
+                },
+            'features': [{
+                'type': 'FACE_DETECTION',
+                'maxResults': 5,
+                }]
+            }]
+    
+        try:
+            request = service.images().annotate(body={
+                'requests': batch_request,
+                })
+        except:
+            print "Unexpected error when trying to send image to service!", sys.exc_info()[0]
+    
+        response = request.execute()
+        print response
+        #print "Face {} found".format(len(response['responses'][0]['faceAnnotations']))
+ 
+
+#def main():
+#    print "Starting..."
+#    loop_frames()
+
+#if __name__ == '__main__':
+#    main()
 
 def main(input_filename, output_filename, max_results):
     print "Starting..."

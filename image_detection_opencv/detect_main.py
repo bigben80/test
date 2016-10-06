@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # import the necessary packages
 import argparse
 import datetime
@@ -5,9 +7,26 @@ import imutils
 import time
 import cv2
 
-haarcascade_path = '/usr/share/opencv/haarcascades/'
+import json
 
-def detect_face(frame, gray):
+from picamera.array import PiRGBArray
+from imutils.video.pivideostream import PiVideoStream
+from picamera import PiCamera
+import time
+import cv2
+
+from twilio.rest import TwilioRestClient
+
+# To find these visit https://www.twilio.com/user/account
+ACCOUNT_SID = "AC3a23436f2ab5f9a0615c50d136c9aad9"
+AUTH_TOKEN = "d30b5a3d12b8b621a12edc0217dc5982"
+FROM_SERVICE_NUMBER = "+46769447309"
+
+
+#haarcascade_path = '/usr/share/opencv/haarcascades/'
+haarcascade_path = './'
+
+def detect_face(gray):
 
     face_cascade_path = haarcascade_path + 'haarcascade_frontalface_default.xml'
     eye_cascade_path = haarcascade_path + 'haarcascade_eye.xml'
@@ -21,16 +40,14 @@ def detect_face(frame, gray):
     eyes_count = 0
 
     for (x,y,w,h) in faces:
-        cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
-        roi_gray = gray[y:y+h, x:x+w]
-        roi_color = frame[y:y+h, x:x+w]
         face_count += 1
+        roi_gray = gray[y:y+h, x:x+w]
         eyes = eye_cascade.detectMultiScale(roi_gray)
         for (ex,ey,ew,eh) in eyes:
-            cv2.rectangle(roi_color,(ex,ey),(ex+ew,ey+eh),(0,255,0),2)
             eyes_count += 1
 
-    return face_count, eyes_count, frame
+    print "Face {} detected!".format(face_count)
+    return face_count, eyes_count
 
 
 # detect the upper body in a frame.
@@ -88,111 +105,167 @@ def detect_motion(background, frame, original_frame, min_area):
 
 
 
+def trigger_alarm(message_body, target_mobile):
 
- 
-def loop_frames(camera, min_area):
- 
-    # initialize the first frame in the video stream
-    firstFrame = None
-    
-    # loop over the frames of the video
+    client = TwilioRestClient(ACCOUNT_SID, AUTH_TOKEN)
+
+    message = client.messages.create(
+        body=message_body,  # Message body, if any
+        to=target_mobile,
+        from_=FROM_SERVICE_NUMBER,
+    )
+
+    print "alarm triggered"
+
+def loop_frames_camera(conf, min_area):
+
+    avg = None
+    lastPeace = datetime.datetime.now()
+    count_time = lastPeace
+    motionCounter = 0
+
+    frame_no = 0
+    brightness = 0
+
+    vs = PiVideoStream().start()
+    time.sleep(2)
+
+    # capture frames from the camera
     while True:
-        # grab the current frame and initialize the occupied/unoccupied
-        # text
-        (grabbed, frame) = camera.read()
-        #text = "Unoccupied"
- 
-        # if the frame could not be grabbed, then we have reached the end
-        # of the video
-        if not grabbed:
-            break
- 
-        # resize the frame, convert it to grayscale, and blur it
-        frame = imutils.resize(frame, width=500)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray_gauss = cv2.GaussianBlur(gray, (21, 21), 0)
- 
-        # if the first frame is None, initialize it
-        if firstFrame is None:
-            firstFrame = gray_gauss
-            continue
 
-        # detect if there's any motion in the video, comparing with first frame
-        motion_detected = False
+    	# grab the raw NumPy array representing the image and initialize
+    	# the timestamp and occupied/unoccupied text
+        frame = vs.read()
+    	timestamp = datetime.datetime.now()
+    	text = "Unoccupied"
 
-        (motion_detected, frame, delta_frame) = detect_motion(firstFrame, gray_gauss, frame, min_area)
-        
-        if motion_detected > 0:
-            print "{} object or person moving in video!!!".format(motion_detected)
+        frame_no += 1
+        if frame_no >= 100:
+            print "100 frames received in {} seconds".format((timestamp - count_time).seconds)
+            count_time = timestamp
+            frame_no = 0
+    
+    	# resize the frame, convert it to grayscale, and blur it
+    	#frame = imutils.resize(frame, width=500)
+    	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    	gray = cv2.GaussianBlur(gray, (21, 21), 0)
+     
+    	# if the average frame is None, initialize it
+    	if avg is None:
+    		print "[INFO] starting background model..."
+    		avg = gray.copy().astype("float")
+    		continue
+     
+    	# accumulate the weighted average between the current frame and
+    	# previous frames, then compute the difference between the current
+    	# frame and running average
+    	cv2.accumulateWeighted(gray, avg, 0.5)
+    	frameDelta = cv2.absdiff(gray, cv2.convertScaleAbs(avg))
+    	
+    	# threshold the delta image, dilate the thresholded image to fill
+    	# in holes, then find contours on thresholded image
+    	thresh = cv2.threshold(frameDelta, conf["delta_thresh"], 255,
+    		cv2.THRESH_BINARY)[1]
+    	thresh = cv2.dilate(thresh, None, iterations=2)
+    	(cnts, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
+    		cv2.CHAIN_APPROX_SIMPLE)
+     
+    	# loop over the contours
+    	for c in cnts:
+    		# if the contour is too small, ignore it
+    		if cv2.contourArea(c) < conf["min_area"]:
+    			continue
+     
+    		# compute the bounding box for the contour, draw it on the frame,
+    		# and update the text
+    		#(x, y, w, h) = cv2.boundingRect(c)
+    		#cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    		text = "Occupied"
+     
+    	# draw the text and timestamp on the frame
+    	ts = timestamp.strftime("%A %d %B %Y %I:%M:%S%p")
 
-            # detect faces
-            (face_count, eyes_count, frame) = detect_face(frame, gray)
-            #(face_count, eyes_count, frame) = detect_face(frame, delta_frame)
-            print'{} faces and {} eyes detected'.format(face_count,eyes_count)
-           
-           
+    	# check to see if the room is occupied
+    	if text == "Occupied":
 
-        #frame = detect_upper_body(frame, gray)
 
-        # draw the text and timestamp on the frame
-        #cv2.putText(frame, "Room Status: {}".format(text), (10, 20),
-        #    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        cv2.putText(frame, datetime.datetime.now().strftime("%A %d %B %Y %I:%M:%S%p"),
-            (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 255), 1)
- 
-        # show the frame and record if the user presses a key
-        cv2.imshow("Security Feed", frame)
-        #cv2.imshow("Thresh", thresh)
-        #cv2.imshow("Frame Delta", frameDelta)
-        key = cv2.waitKey(1) & 0xFF
- 
-        # if the `q` key is pressed, break from the lop
-        if key == ord("q"):
-            break
- 
+            # Measure motion amount and face detected in the last several seconds. if detected enough motion, or a lot faces detected, trigger alarm
+            if (timestamp - lastPeace).seconds < conf["motion_detect_seconds"]:
 
-def main(input_filename, min_area):
+                motionCounter += 1
+                if (motionCounter >= conf["min_motion_frames"]):
+                    print "continues motion detected! Motion frame number {}".format(motionCounter)
+
+                    message_body = "Detect activitis in last {} seconds!".format(conf["motion_detect_seconds"])
+                    target_mobile = conf["phone_number"]
+                    trigger_alarm(message_body, target_mobile)
+
+                    motionCounter = 0
+                    lastPeace = timestamp
+                else:
+                    pass
+
+            else:
+                print "some motition detected but not continous. faulse detection? {} motion detected in {} seconds".format(motionCounter, conf["motion_detect_seconds"])
+                motionCounter = 0
+                lastPeace = timestamp
+
+     
+    	# otherwise, the room is not occupied
+    	else:
+    		motionCounter = 0
+                lastPeace = timestamp
+    	# check to see if the frames should be displayed to screen
+    	if conf["show_video"]:
+    		# display the security feed
+    		cv2.imshow("Security Feed", frame)
+    		key = cv2.waitKey(1) & 0xFF
+     
+    		# if the `q` key is pressed, break from the lop
+    		if key == ord("q"):
+    			break
+     
+
+
+def main(config_file):
     print "Starting..."
 
-
+    conf = json.load(open(config_file))
     # if the video argument is None, then we are reading from webcam
-    if input_filename == "camera":
-        camera = cv2.VideoCapture(0)
-        time.sleep(0.25)
+    if conf["input_filename"] == "camera":
  
+       # camera = PiCamera()
+
+       # if conf["input_filename"]:
+       #     camera.rotation = conf["rotation"]
+       # camera.resolution = tuple(conf["resolution"])
+       # camera.framerate = conf["fps"]
+       # rawCapture = PiRGBArray(camera, size=tuple(conf["resolution"]))
+
+
+        # loop video frames
+        loop_frames_camera(conf, int(conf["min_area"]))
+
     # otherwise, we are reading from a video file
     else:
         camera = cv2.VideoCapture(input_filename)
+
+        # loop video frames
+        loop_frames(camera, int(min_area))
  
-    # loop video frames
-    loop_frames(camera, int(min_area))
 
     # cleanup the camera and close any open windows
     camera.release()
     cv2.destroyAllWindows()
 
 
-#    with open(input_filename, 'rb') as image:
-#        print "Processing file: ", input_filename
-#        faces = detect_face(image, max_results)
-#        print('Found %s face%s' % (len(faces), '' if len(faces) == 1 else 's'))
-#
-#        print('Writing to file %s' % output_filename)
-#        # Reset the file pointer, so we can read the file again
-#        image.seek(0)
-#        highlight_faces(image, faces, output_filename)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Detects motion from video or camer')
     parser.add_argument(
-        'input_filename',
-        help='the device you want to detect motion. video file name or camera')
-    parser.add_argument(
-        'min_area',
-        help='the minimal area size of motion area, smaller motion will be ignored.')
+        'config_file',
+        help='the configuration json file')
     args = parser.parse_args()
 
-    main(args.input_filename, args.min_area)
+    main(args.config_file)
 
