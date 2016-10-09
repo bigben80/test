@@ -4,18 +4,28 @@
 import argparse
 import datetime
 import imutils
-import time
 import cv2
 
 import json
 
 from picamera.array import PiRGBArray
-from imutils.video.pivideostream import PiVideoStream
+#from imutils.video.pivideostream import PiVideoStream
 from picamera import PiCamera
-import time
 import cv2
 
+from flask import Flask, render_template, Response
+from picamera import PiCamera
+from myvideostream import MyPiVideoStream
+import time
+
+from OpenSSL import SSL
+
+from gevent.pywsgi import WSGIServer
+
+
 from twilio.rest import TwilioRestClient
+
+from threading import Thread
 
 # To find these visit https://www.twilio.com/user/account
 ACCOUNT_SID = "AC3a23436f2ab5f9a0615c50d136c9aad9"
@@ -25,6 +35,12 @@ FROM_SERVICE_NUMBER = "+46769447309"
 
 #haarcascade_path = '/usr/share/opencv/haarcascades/'
 haarcascade_path = './'
+
+
+vs = MyPiVideoStream(resolution=(320, 240), rotation=180).start()
+time.sleep(2)
+
+app = Flask(__name__)
 
 def detect_face(gray):
 
@@ -121,14 +137,16 @@ def loop_frames_camera(conf, min_area):
 
     avg = None
     lastPeace = datetime.datetime.now()
+    timestamp = lastPeace
     count_time = lastPeace
+    lastMotion = lastPeace
     motionCounter = 0
 
     frame_no = 0
     brightness = 0
 
-    vs = PiVideoStream().start()
-    time.sleep(2)
+    #vs = PiVideoStream().start()
+    #time.sleep(2)
 
     # capture frames from the camera
     while True:
@@ -181,18 +199,16 @@ def loop_frames_camera(conf, min_area):
     		#(x, y, w, h) = cv2.boundingRect(c)
     		#cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
     		text = "Occupied"
+                lastMotion = timestamp
      
-    	# draw the text and timestamp on the frame
-    	ts = timestamp.strftime("%A %d %B %Y %I:%M:%S%p")
 
     	# check to see if the room is occupied
     	if text == "Occupied":
-
-
             # Measure motion amount and face detected in the last several seconds. if detected enough motion, or a lot faces detected, trigger alarm
             if (timestamp - lastPeace).seconds < conf["motion_detect_seconds"]:
 
                 motionCounter += 1
+                #print "current time: {}, Motion start from : {}, Motion detected: {}".format( timestamp, lastPeace, motionCounter)
                 if (motionCounter >= conf["min_motion_frames"]):
                     print "continues motion detected! Motion frame number {}".format(motionCounter)
 
@@ -211,8 +227,8 @@ def loop_frames_camera(conf, min_area):
                 lastPeace = timestamp
 
      
-    	# otherwise, the room is not occupied
-    	else:
+    	# otherwise, no motion detected in current frame, if no motion detected in last several seconds, clear motion status
+    	elif (timestamp - lastMotion).seconds > 2.0:
     		motionCounter = 0
                 lastPeace = timestamp
     	# check to see if the frames should be displayed to screen
@@ -226,25 +242,36 @@ def loop_frames_camera(conf, min_area):
     			break
      
 
+app.route('/')
+def index():
+    return render_template('index.html')
+
+def gen():
+    while True:
+        frame = vs.read_consistent()
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen(),
+                mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 def main(config_file):
     print "Starting..."
+
 
     conf = json.load(open(config_file))
     # if the video argument is None, then we are reading from webcam
     if conf["input_filename"] == "camera":
  
-       # camera = PiCamera()
+        #loop_frames_camera(conf, int(conf["min_area"]))
 
-       # if conf["input_filename"]:
-       #     camera.rotation = conf["rotation"]
-       # camera.resolution = tuple(conf["resolution"])
-       # camera.framerate = conf["fps"]
-       # rawCapture = PiRGBArray(camera, size=tuple(conf["resolution"]))
-
-
-        # loop video frames
-        loop_frames_camera(conf, int(conf["min_area"]))
+        t = Thread( target=loop_frames_camera, args=(conf, int(conf["min_area"])) )
+        t.daemon = True
+        t.start()
 
     # otherwise, we are reading from a video file
     else:
@@ -253,6 +280,10 @@ def main(config_file):
         # loop video frames
         loop_frames(camera, int(min_area))
  
+
+    http_server = WSGIServer(('0.0.0.0', 7737), app, keyfile='domain.key', certfile='domain.crt')
+    http_server.serve_forever()
+
 
     # cleanup the camera and close any open windows
     camera.release()

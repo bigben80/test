@@ -5,13 +5,13 @@
 	"show_video": false,
 	"input_filename": "camera",
 	"rotation": 180,
-	"motion_detect_seconds": 3.0,
-	"min_motion_frames": 60.0,
+	"motion_detect_seconds": 6.0,
+	"min_motion_frames": 45.0,
         "too_many_faces": 10.0,
 	"camera_warmup_time": 2.5,
 	"delta_thresh": 5,
 	"resolution": [640, 480],
 	"fps": 20,
-	"min_area": 500,
+	"min_area": 120,
         "phone_number": "+46763359899"
 }
