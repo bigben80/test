@@ -183,6 +183,7 @@ def loop_frames_camera(conf, min_area):
     	# grab the raw NumPy array representing the image and initialize
     	# the timestamp and occupied/unoccupied text
         frame = vs.read()
+        #gray = vs.read()
     	timestamp = datetime.datetime.now()
     	text = "Unoccupied"
 
@@ -278,6 +279,7 @@ def index():
 def gen():
     while True:
         frame = vs.read_consistent()
+        #frame = open("./seed.jpg")
 
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')

@@ -5,6 +5,7 @@ from picamera import PiCameraCircularIO
 from threading import Thread
 import cv2
 import io
+import datetime
 
 class MyPiVideoStream:
 	def __init__(self, resolution=(320, 240), rotation=0,framerate=32):
@@ -23,6 +24,9 @@ class MyPiVideoStream:
 		self.frame = None
                 self.frame_consistent = None
 		self.stopped = False
+                self.get_frame_no = 0
+                self.last_100_time = datetime.datetime.now()
+                self.http_frame_no = 0
 
 	def start(self):
 		# start the thread to read frames from the video stream
@@ -30,9 +34,9 @@ class MyPiVideoStream:
 		t.daemon = True
 		t.start()
 
-                t2 = Thread(target=self.update_consistent, args=())
-                t2.daemon = True
-                t2.start()
+                #t2 = Thread(target=self.update_consistent, args=())
+                #t2.daemon = True
+                #t2.start()
 		return self
 
 	def update(self):
@@ -40,8 +44,20 @@ class MyPiVideoStream:
 		for f in self.stream:
 			# grab the frame from the stream and clear the stream in
 			# preparation for the next frame
-			self.frame = f.array
+                        #gray = cv2.cvtColor(f.array, cv2.COLOR_BGR2GRAY)
+                        #gray = cv2.GaussianBlur(gray, (21, 21), 0)
+                        #self.frame = gray
+                        self.frame = f.array
+                        ret, jpg_frame = cv2.imencode('.jpg', self.frame)
+                        self.frame_consistent = jpg_frame.tostring()
+
 			self.rawCapture.truncate(0)
+
+                        self.get_frame_no += 1
+                        if self.get_frame_no >= 100:
+                            print "captured 100 frames in {} seconds".format( (datetime.datetime.now() - self.last_100_time).seconds )
+                            self.get_frame_no = 0
+                            self.last_100_time = datetime.datetime.now()
 
 			# if the thread indicator variable is set, stop the thread
 			# and resource camera resources
@@ -52,20 +68,10 @@ class MyPiVideoStream:
 				return
 
         def update_consistent(self):
-                # keep looping infinitely until the thread is stopped
-                for f in self.camera.capture_continuous(self.stream_consistent, 'jpeg', use_video_port=False):
-                #for f in self.camera.capture_continuous('img{counter:02d}.jpg'):
-                        # grab the frame from the stream and clear the stream in
-                        # preparation for the next frame
-                        self.stream_consistent.seek(0)
-                        #self.frame_consistent = Image.open(self.stream_consistent)
-                        self.frame_consistent = self.stream_consistent.read()
+                    if self.frame is not None:
+                        ret, jpg_frame = cv2.imencode('.jpg', self.frame)
+                        self.frame_consistent = jpg_frame.tostring()
 
-                        self.stream_consistent.seek(0)
-                        self.stream_consistent.truncate() 
-
-                        # if the thread indicator variable is set, stop the thread
-                        # and resource camera resources
                         if self.stopped:
                                 self.camera.capture_continuous.close()
                                 self.camera.close()
@@ -77,6 +83,7 @@ class MyPiVideoStream:
         def read_consistent(self):
                 # return the frame most recently read
                 return self.frame_consistent
+                return 
 
 	def stop(self):
 		# indicate that the thread should be stopped
