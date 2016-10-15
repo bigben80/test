@@ -1,0 +1,19 @@
+
+
+
+{
+	"show_video": false,
+	"input_filename": "camera",
+	"rotation": 180,
+	"motion_detect_seconds": 10.0,
+	"min_motion_frames": 70.0,
+        "too_many_faces": 10.0,
+	"camera_warmup_time": 2.5,
+	"delta_thresh": 5,
+	"resolution": [640, 480],
+	"fps": 20,
+	"min_area": 120,
+        "phone_number": "+46763359899",
+        "username": "30d5fa2423f92dfbd010",
+        "password": "e381ff16b4e99ee7cd7c34ed78d5b0c31c0c11d06cbe"
+}

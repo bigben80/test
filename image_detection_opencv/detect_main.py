@@ -39,7 +39,7 @@ FROM_SERVICE_NUMBER = "+46769447309"
 haarcascade_path = './'
 
 
-vs = MyPiVideoStream(resolution=(320, 240)).start()
+vs = MyPiVideoStream(resolution=(640, 480)).start()
 time.sleep(2)
 
 app = Flask(__name__)
@@ -175,15 +175,15 @@ def loop_frames_camera(conf, min_area):
     brightness = 0
 
     #vs = PiVideoStream().start()
-    #time.sleep(2)
+    time.sleep(3)
 
     # capture frames from the camera
     while True:
 
     	# grab the raw NumPy array representing the image and initialize
     	# the timestamp and occupied/unoccupied text
-        frame = vs.read()
-        #gray = vs.read()
+        #frame = vs.read()
+        gray = vs.read()
     	timestamp = datetime.datetime.now()
     	text = "Unoccupied"
 
@@ -195,8 +195,8 @@ def loop_frames_camera(conf, min_area):
     
     	# resize the frame, convert it to grayscale, and blur it
     	#frame = imutils.resize(frame, width=500)
-    	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    	gray = cv2.GaussianBlur(gray, (21, 21), 0)
+    	#gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    	#gray = cv2.GaussianBlur(gray, (21, 21), 0)
      
     	# if the average frame is None, initialize it
     	if avg is None:

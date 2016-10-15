@@ -22,11 +22,20 @@ class MyPiVideoStream:
 		# initialize the frame and the variable used to indicate
 		# if the thread should be stopped
 		self.frame = None
+                self.gray = None
+                self.gauss_gray = None
                 self.frame_consistent = None
 		self.stopped = False
                 self.get_frame_no = 0
+                self.get_frame_gray = 0
+                self.get_frame_gauss = 0
                 self.last_100_time = datetime.datetime.now()
+                self.last_100_gray = self.last_100_time
+                self.last_100_gauss = self.last_100_time
                 self.http_frame_no = 0
+
+                self.frame_grayed = False
+                self.frame_gaussed = False
 
 	def start(self):
 		# start the thread to read frames from the video stream
@@ -34,10 +43,43 @@ class MyPiVideoStream:
 		t.daemon = True
 		t.start()
 
-                #t2 = Thread(target=self.update_consistent, args=())
-                #t2.daemon = True
-                #t2.start()
+                t2 = Thread(target=self.update_consistent, args=())
+                t2.daemon = True
+                t2.start()
+
+                t3 = Thread(target=self.to_gauss, args=())
+                t3.daemon = True
+                t3.start()
+
+
 		return self
+
+        def to_gray(self):
+                while not self.stopped:
+                    if (self.frame is not None):
+
+                        gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                        self.gray = gray
+                        #self.frame_grayed = True
+
+                        self.get_frame_gray += 1
+                        if self.get_frame_gray >= 100:
+                            print "convert 100 frames to gray in {} seconds".format( (datetime.datetime.now() - self.last_100_gray).seconds )
+                            self.get_frame_gray = 0
+                            self.last_100_gray = datetime.datetime.now()
+
+        def to_gauss(self):
+                while not self.stopped:
+                    if (self.gray is not None):
+                        gauss_gray = cv2.GaussianBlur(self.gray, (21, 21), 0)
+                        self.gauss_gray = gauss_gray
+                        #self.frame_gaussed = True
+       
+                        self.get_frame_gauss += 1
+                        if self.get_frame_gauss >= 100:
+                            print "convert 100 frames to gauss in {} seconds".format( (datetime.datetime.now() - self.last_100_gauss).seconds )
+                            self.get_frame_gauss = 0
+                            self.last_100_gauss = datetime.datetime.now()
 
 	def update(self):
 		# keep looping infinitely until the thread is stopped
@@ -48,10 +90,17 @@ class MyPiVideoStream:
                         #gray = cv2.GaussianBlur(gray, (21, 21), 0)
                         #self.frame = gray
                         self.frame = f.array
-                        ret, jpg_frame = cv2.imencode('.jpg', self.frame)
-                        self.frame_consistent = jpg_frame.tostring()
+
+                        gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+                        self.gray = gray
+
+                        #ret, jpg_frame = cv2.imencode('.jpg', self.frame)
+                        #self.frame_consistent = jpg_frame.tostring()
 
 			self.rawCapture.truncate(0)
+
+                        #self.frame_grayed = False
+                        #self.frame_gaussed = False
 
                         self.get_frame_no += 1
                         if self.get_frame_no >= 100:
@@ -68,6 +117,7 @@ class MyPiVideoStream:
 				return
 
         def update_consistent(self):
+                while not self.stopped:
                     if self.frame is not None:
                         ret, jpg_frame = cv2.imencode('.jpg', self.frame)
                         self.frame_consistent = jpg_frame.tostring()
@@ -79,7 +129,8 @@ class MyPiVideoStream:
 
 	def read(self):
 		# return the frame most recently read
-		return self.frame
+		#return self.frame
+                return self.gauss_gray
         def read_consistent(self):
                 # return the frame most recently read
                 return self.frame_consistent
