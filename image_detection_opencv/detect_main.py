@@ -246,6 +246,8 @@ def loop_frames_camera(conf, min_area):
                     target_mobile = conf["phone_number"]
                     trigger_alarm(message_body, target_mobile)
 
+                    vs.alarm_enabled = True
+
                     motionCounter = 0
                     lastPeace = timestamp
                 else:

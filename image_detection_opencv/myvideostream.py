@@ -36,6 +36,7 @@ class MyPiVideoStream:
 
                 self.frame_grayed = False
                 self.frame_gaussed = False
+                self.alarm_enabled = False
 
 	def start(self):
 		# start the thread to read frames from the video stream
@@ -119,7 +120,18 @@ class MyPiVideoStream:
         def update_consistent(self):
                 while not self.stopped:
                     if self.frame is not None:
-                        ret, jpg_frame = cv2.imencode('.jpg', self.frame)
+
+                        ts = datetime.datetime.now().strftime("%A %d %B %Y %I:%M:%S%p")
+
+                        frame = self.frame
+
+                        cv2.putText(frame, ts, (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7, (0, 0, 255), 1)                        
+
+                        cv2.putText(frame, "Alarm Status: {}".format(self.alarm_enabled), (10, 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 1)
+
+                        ret, jpg_frame = cv2.imencode('.jpg', frame)
                         self.frame_consistent = jpg_frame.tostring()
 
                         if self.stopped:
