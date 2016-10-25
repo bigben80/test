@@ -55,8 +55,8 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-username = json.load(open("config.json"))["username"]
-password = json.load(open("config.json"))["password"]
+username = json.load(open("/home/pi/test/image_detection_opencv/config.json"))["username"]
+password = json.load(open("/home/pi/test/image_detection_opencv/config.json"))["password"]
 
 class User(UserMixin):
 
@@ -286,6 +286,23 @@ def gen():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
+@app.route('/alarm', methods=["GET", "POST"])
+@login_required
+def alarm_settings():
+    if request.method == 'POST':
+        print "Alarm settings posted!"
+        print request.form
+        if request.form['submit'] == 'True':
+            vs.alarm_enabled = True
+        elif request.form['submit'] == 'False':
+            vs.alarm_enabled = False
+        #render_template("alarm_settings.html",result = result)
+        return redirect(url_for('video_feed'))
+    else:
+        return render_template("alarm_settings.html")
+  
+
+
 @app.route('/video_feed')
 @login_required
 def video_feed():
@@ -356,7 +373,7 @@ def main(config_file):
         loop_frames(camera, int(min_area))
  
 
-    http_server = WSGIServer(('0.0.0.0', 7737), app, keyfile='domain.key', certfile='domain.crt')
+    http_server = WSGIServer(('0.0.0.0', 7737), app, keyfile='/home/pi/test/image_detection_opencv/domain.key', certfile='/home/pi/test/image_detection_opencv/domain.crt')
     http_server.serve_forever()
 
 
