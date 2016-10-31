@@ -169,6 +169,7 @@ def loop_frames_camera(conf, min_area):
     timestamp = lastPeace
     count_time = lastPeace
     lastMotion = lastPeace
+    lastAlarm = lastPeace
     motionCounter = 0
 
     frame_no = 0
@@ -239,17 +240,18 @@ def loop_frames_camera(conf, min_area):
 
                 motionCounter += 1
                 #print "current time: {}, Motion start from : {}, Motion detected: {}".format( timestamp, lastPeace, motionCounter)
-                if (motionCounter >= conf["min_motion_frames"]):
+                if (motionCounter >= conf["min_motion_frames"]) and (timestamp - lastAlarm).seconds > conf["alarm_cool_down"] and (vs.alarm_enabled == True):
                     print "continues motion detected! Motion frame number {}".format(motionCounter)
 
                     message_body = "Detect activitis in last {} seconds!".format(conf["motion_detect_seconds"])
                     target_mobile = conf["phone_number"]
                     trigger_alarm(message_body, target_mobile)
 
-                    vs.alarm_enabled = True
+                    #vs.alarm_enabled = True
 
                     motionCounter = 0
                     lastPeace = timestamp
+                    lastAlarm = timestamp
                 else:
                     pass
 
@@ -290,16 +292,17 @@ def gen():
 @login_required
 def alarm_settings():
     if request.method == 'POST':
-        print "Alarm settings posted!"
-        print request.form
-        if request.form['submit'] == 'True':
-            vs.alarm_enabled = True
-        elif request.form['submit'] == 'False':
+        if vs.alarm_enabled == True:
             vs.alarm_enabled = False
-        #render_template("alarm_settings.html",result = result)
+        else:
+            vs.alarm_enabled = True
         return redirect(url_for('video_feed'))
     else:
-        return render_template("alarm_settings.html")
+        return Response('''
+        <form action="" method="post">
+            <p><input type=submit value=AlarmSwitch>
+        </form>
+        ''')
   
 
 
